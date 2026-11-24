@@ -5,15 +5,17 @@
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Opcode byte -> (immediate bytes << 4) | (pops << 2) | pushes.
-// Unknown byte: no entry, trap 5.
-const T = new Map([
+// Opcode byte -> (immediate bytes << 4) | (pops << 2) | pushes, stored +1 so
+// that 0 means "no such opcode" (trap 5). A plain array lookup is faster
+// than a Map on the hot path: the loop below runs once per instruction.
+const T = new Uint8Array(256);
+for (const [b, v] of [
   [0, 0], [1, 17], [2, 65], [3, 4], [4, 6], [5, 10], [6, 11], [7, 15],
   [16, 9], [17, 9], [18, 9], [19, 9], [20, 9], [21, 9], [22, 9], [23, 5],
   [24, 9], [25, 9], [26, 9], [27, 5], [28, 9], [29, 9], [30, 9],
   [32, 9], [33, 9], [34, 9], [48, 32], [49, 36], [50, 36], [51, 32],
   [52, 0], [64, 5], [65, 8], [80, 4], [81, 4], [82, 1], [83, 4],
-]);
+]) T[b] = v + 1;
 
 function run(p, q) {
   const n = p.length;
@@ -27,8 +29,8 @@ function run(p, q) {
     if (t === 1000000) return end(10); // step limit
     if (pc < 0 || pc >= n) return end(9); // pc outside the program
     const op = p[pc];
-    const v = T.get(op);
-    if (v === undefined) return end(5); // unknown opcode
+    const v = T[op] - 1;
+    if (v < 0) return end(5); // unknown opcode
     const im = v >> 4, po = (v >> 2) & 3, pu = v & 3;
     if (pc + im >= n) return end(9); // immediate cut off by the end
     t++;
